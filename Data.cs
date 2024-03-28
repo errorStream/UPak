@@ -6,6 +6,7 @@ using Url = System.String;
 using Path = System.String;
 using PackageName = System.String;
 using SemVar = System.String;
+using Newtonsoft.Json;
 
 namespace Upak
 {
@@ -32,34 +33,73 @@ namespace Upak
 
         internal class Author
         {
+            [JsonProperty("name")]
             internal required string Name { get; init; }
+
+            [JsonProperty("email")]
             internal Email? Email { get; init; }
+
+            [JsonProperty("url")]
             internal Url? Url { get; init; }
         }
 
         internal class Sample
         {
+            [JsonProperty("displayName")]
             internal required string DisplayName { get; init; }
+
+            [JsonProperty("description")]
             internal string? Description { get; init; }
+
+            [JsonProperty("path")]
             internal required Path Path { get; init; }
         }
 
         internal class PackageJson
         {
+            [JsonProperty("name")]
             internal required PackageName Name { get; init; }
+
+            [JsonProperty("version")]
             internal required SemVar Version { get; init; }
+
+            [JsonProperty("description")]
             internal string? Description { get; init; }
+
+            [JsonProperty("displayName")]
             internal string? DisplayName { get; init; }
+
+            [JsonProperty("unity")]
             internal SemVar? Unity { get; init; }
+
+            [JsonProperty("author")]
             internal Author? Author { get; init; }
+
+            [JsonProperty("changelogUrl")]
             internal Url? ChangelogUrl { get; init; }
+
+            [JsonProperty("dependencies")]
             internal Dictionary<string, SemVar>? Dependencies { get; init; }
+
+            [JsonProperty("documentationUrl")]
             internal Url? DocumentationUrl { get; init; }
+
+            [JsonProperty("hideInEditor")]
             internal bool? HideInEditor { get; init; }
+
+            [JsonProperty("keywords")]
             internal string[]? Keywords { get; init; }
+
+            [JsonProperty("license")]
             internal string? License { get; init; }
+
+            [JsonProperty("licensesUrl")]
             internal Url? LicensesUrl { get; init; }
+
+            [JsonProperty("samples")]
             internal Sample[]? Samples { get; init; }
+
+            [JsonProperty("unityRelease")]
             internal SemVar? UnityRelease { get; init; }
         }
     }

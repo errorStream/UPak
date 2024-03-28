@@ -33,8 +33,10 @@ Category:
             else if (args[0] is "-v" or "--version")
             {
                 Assembly assembly = Assembly.GetExecutingAssembly();
-                FileVersionInfo fileVersionInfo = FileVersionInfo.GetVersionInfo(assembly.Location);
-                string? version = fileVersionInfo.ProductVersion;
+                // FileVersionInfo fileVersionInfo = FileVersionInfo.GetVersionInfo(assembly.Location);
+                // string? version = fileVersionInfo.ProductVersion;
+
+                string? version = typeof(Program).Assembly.GetName().Version?.ToString();
 
                 Console.Write("upak ");
                 Console.WriteLine(version);

@@ -1,9 +1,11 @@
 using System;
 using System.IO;
 using System.Text;
-using InquirerCS;
+using Sharprompt;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using System.ComponentModel.DataAnnotations;
+using System.Text.RegularExpressions;
 
 namespace Upak
 {
@@ -41,6 +43,39 @@ namespace Upak
             string? FolderName
             ) : CommonPackageOptions(OfficialName, FullName, Version, Description, DisplayName, MinimumUnityVersion, GenerateDocs);
 
+        private static Func<object?, ValidationResult?> ValidateRegularExpressionPrecomp(Regex regex, string errorMessage)
+        {
+            return input =>
+            {
+                if (input is not string strValue)
+                {
+                    return ValidationResult.Success;
+                }
+
+                if (regex.IsMatch(strValue))
+                {
+                    return ValidationResult.Success;
+                }
+
+                return new ValidationResult(errorMessage);
+            };
+        }
+
+        private static Func<object?, ValidationResult?> ValidatePredicate(Predicate<object?> predicate, string errorMessage)
+        {
+            return input =>
+            {
+                if (predicate(input))
+                {
+                    return ValidationResult.Success;
+                }
+
+                return new ValidationResult(errorMessage);
+            };
+        }
+
+        internal static readonly string[] _packagePlacements = new[] { "embedded", "local" };
+
         private static void InitPackage()
         {
             string? officialName = null;
@@ -53,62 +88,61 @@ namespace Upak
             bool? generateDocs = null;
             string? embeddedOrLocal = null;
             string? folderName = null;
-            Inquirer.Prompt(Question
-                            .Input("Official Name\n  The officially registered package name.\n")
-                            .WithValidation(
-                                (string val) => Data.PackageNamePartRegex().IsMatch(val),
-                                "Invalid package name: May only contain lowercase letters, underscore, period, or hyphen and be between 1 and 214 characters"))
-                .Then((result) => officialName = result);
-            Inquirer.Prompt(Question
-                            .Input("Company Name\n  The name of the company producing this package. This is usually your domain, for (example.com), it would be 'example'.\n")
-                            .WithValidation(
-                                (string val) => Data.PackageNamePartRegex().IsMatch(val),
-                                "Invalid company name"))
-                .Then((result) => companyName = result);
-            Inquirer.Prompt(Question
-                            .Input("Top Level Domain\n  The top level domain of your site. For (example.com), it would be 'com'.\n")
-                            .WithValidation(
-                                (string val) => Data.PackageNamePartRegex().IsMatch(val),
-                                "Invalid top level domain name")
-                            .WithDefaultValue("com"))
-                .Then((result) => topLevelDomain = result);
-            Inquirer.Prompt(Question
-                            .Input("Initial Version\n  The package version number.\n")
-                            .WithValidation(
-                                (string val) => Data.SemVarRegex().IsMatch(val),
-                                "Must be a valid SemVar")
-                            .WithDefaultValue("1.0.0"))
-                .Then((result) => version = result);
-            Inquirer.Prompt(Question
-                            .Input("Description\n  A brief description of the package.\n")
-                            .WithDefaultValue(null))
-                .Then((result) => description = result);
-            Inquirer.Prompt(Question
-                            .Input("Display Name\n  A user-friendly name to appear in the Unity Editor\n")
-                            .WithDefaultValue(null))
-                .Then((result) => displayName = result);
+            Console.WriteLine("The officially registered package name.");
+            officialName = Prompt.Input<string>("Official Name",
+                                                validators: new[] {
+                                                    Validators.Required(),
+                                                    ValidateRegularExpressionPrecomp(
+                                                    Data.PackageNamePartRegex(),
+                                                    "Invalid package name: May only contain lowercase letters, underscore, period, or hyphen and be between 1 and 214 characters") });
+            Console.WriteLine("The name of the company producing this package. This is usually your domain, for (example.com), it would be 'example'.");
+            companyName = Prompt.Input<string>("Company Name",
+                                               validators: new[] {
+                                                   Validators.Required(),
+                                                   ValidateRegularExpressionPrecomp(
+                                                   Data.PackageNamePartRegex(),
+                                                   "Invalid company name") });
+            Console.WriteLine("The top level domain of your site. For (example.com), it would be 'com'.");
+            topLevelDomain = Prompt.Input<string>("Top Level Domain",
+                                                  validators: new[] {
+                                                      Validators.Required(),
+                                                      ValidateRegularExpressionPrecomp(
+                                                      Data.PackageNamePartRegex(),
+                                                      "Invalid top level domain name") },
+                                                  defaultValue: "com");
+            Console.WriteLine("The package version number.");
+            version = Prompt.Input<string>("Initial Version",
+                                           validators: new[] {
+                                               Validators.Required(),
+                                               ValidateRegularExpressionPrecomp(
+                                               Data.SemVarRegex(),
+                                               "Must be a valid SemVar") },
+                                           defaultValue: "1.0.0");
+            Console.WriteLine("A brief description of the package.");
+            description = Prompt.Input<string>("Description");
+            Console.WriteLine("A user-friendly name to appear in the Unity Editor.");
+            displayName = Prompt.Input<string>("Display Name");
             // TODO: set default to that of unity host project
-            Inquirer.Prompt(Question
-                            .Input("Unity Version\n  The lowest Unity version the package is compatible with.\n")
-                            .WithValidation(
-                                (string val) => (val == "any" || Data.SemVarRegex().IsMatch(val)),
-                                "Must be a valid SemVar or 'any'"))
-                .Then((result) => minimumUnityVersion = result);
-            Inquirer.Prompt(Question
-                            .Confirm("Generate Docs\n  Should doxygen document generation be setup?\n")
-                            .WithDefaultValue(true))
-                .Then((result) => generateDocs = result);
-            Inquirer.Prompt(Question
-                            .List("Embedded Or Local\n  Embedded packages are installed to the packages folder of the nearest parent unity project.\n",
-                                  new[] { "embedded", "local" })
-                            .WithDefaultValue("embedded"))
-                .Then((result) => embeddedOrLocal = result);
+            Console.WriteLine("The lowest Unity version the package is compatible with. Use 'any' for any version.");
+            minimumUnityVersion = Prompt.Input<string>("Unity Version",
+                                                       validators: new[] {
+                                                           Validators.Required(),
+                                                           ValidatePredicate(
+                                                               (object? val) => val is string s && (s == "any" || Data.SemVarRegex().IsMatch(s)),
+                                                               "Must be a valid SemVar or 'any'") },
+                                                       defaultValue: "any");
+            Console.WriteLine("Should doxygen document generation be setup?");
+            generateDocs = Prompt.Input<bool>("Generate Docs?",
+                                              defaultValue: true);
+            Console.WriteLine("Embedded packages are installed to the packages folder of the nearest parent unity project.");
+            embeddedOrLocal = Prompt.Select("Embedded Or Local",
+                                            _packagePlacements,
+                                            defaultValue: "embedded");
             if (embeddedOrLocal == "local")
             {
-                Inquirer.Prompt(Question
-                                .Input("Folder Name\n  The name of the root folder for the project.\n")
-                                .WithDefaultValue(displayName ?? officialName))
-                    .Then((result) => folderName = result);
+                Console.WriteLine("The name of the root folder for the project.");
+                folderName = Prompt.Input<string>("Folder Name",
+                                                  defaultValue: displayName ?? officialName);
             }
 
             if (officialName == null)
@@ -216,7 +250,7 @@ namespace Upak
             MakePackageCommon(options, packageRoot);
         }
 
-        private static async void MakePackageCommon(CommonPackageOptions options, string packageRoot)
+        private static void MakePackageCommon(CommonPackageOptions options, string packageRoot)
         {
             SafeMode.Prompt($"Creating directory at '{packageRoot}'");
             Directory.CreateDirectory(packageRoot);
@@ -228,7 +262,12 @@ namespace Upak
                 Description = options.Description,
                 DisplayName = options.DisplayName,
             };
-            var packageJsonString = JsonConvert.SerializeObject(packageJson, Formatting.Indented);
+            var packageJsonString = JsonConvert.SerializeObject(packageJson,
+                                                                Formatting.Indented,
+                                                                new JsonSerializerSettings
+                                                                {
+                                                                    NullValueHandling = NullValueHandling.Ignore
+                                                                });
             SafeMode.Prompt($"Writing generated json to to '{packageJsonPath}'");
             File.WriteAllText(packageJsonPath, packageJsonString);
             var initialReadme = new StringBuilder()

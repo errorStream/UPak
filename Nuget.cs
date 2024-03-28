@@ -34,11 +34,13 @@ namespace Upak
             var root = doc.CreateElement("Project");
             doc.AppendChild(root);
             root.SetAttribute("Sdk", "Microsoft.NET.Sdk");
-            root.AppendChild(doc.CreateElement("PropertyGroup"));
+            var propertyGroup = doc.CreateElement("PropertyGroup");
+            root.AppendChild(propertyGroup);
             var targetFramework = doc.CreateElement("TargetFramework");
-            root.AppendChild(targetFramework);
+            propertyGroup.AppendChild(targetFramework);
             targetFramework.InnerText = "netstandard2.0";
             var itemGroup = doc.CreateElement("ItemGroup");
+            root.AppendChild(itemGroup);
 
             foreach (var x in packages)
             {
@@ -158,7 +160,7 @@ namespace Upak
 
                 try
                 {
-                    SafeMode.Prompt("Deleting temporary directory '{tmpObj.FullName}'");
+                    SafeMode.Prompt($"Deleting temporary directory '{tmpObj.FullName}'");
                     tmpObj.Delete(true);
                 }
                 catch (Exception e)
@@ -166,6 +168,7 @@ namespace Upak
                     Console.WriteLine($"Failed to delete temporary directory: {e.Message}");
                 }
             }
+            Console.WriteLine("NuGet package installation complete");
         }
 
         private static void DotnetRestore()
@@ -199,7 +202,7 @@ namespace Upak
         {
             static string? InstallLocationType(string path)
             {
-                return Misc.IsUnityPackage(path) ? "project"
+                return Misc.IsUnityProject(path) ? "project"
                     : Misc.IsUnityPackage(path) ? "package"
                     : null;
             }
@@ -211,7 +214,7 @@ namespace Upak
                 Environment.Exit(1);
             }
 
-            (string path, string result) = found.Value;
+            (string result, string path) = found.Value;
 
             var installPath = (result == "project")
                 ? Path.Combine(path, "Assets", "NugetPackages")

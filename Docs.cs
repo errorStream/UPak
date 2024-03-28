@@ -112,7 +112,7 @@ namespace Upak
             CopyWithFilter("Doxyfile", tmpObj, ProcessDoxyfileLine);
             SafeMode.Prompt("Deleting Doxyfile");
             File.Delete("Doxyfile");
-            SafeMode.Prompt("Moving file at '{tmpObj}' to Doxyfile");
+            SafeMode.Prompt($"Moving file at '{tmpObj}' to Doxyfile");
             File.Move(tmpObj, "Doxyfile");
             DownloadDoxygenAwesome(documentationRoot);
             Environment.CurrentDirectory = oldCwd;
