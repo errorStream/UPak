@@ -397,40 +397,46 @@ namespace Upak
             Console.WriteLine("Package initialized");
         }
 
-        internal static void Category(string[] strings)
+        internal static void Category(string[] args)
         {
-            static void PrintHelp()
+            if (args.Length == 0)
             {
-                Console.WriteLine(
-                    @"upak pack: Tools for automating unity package operations
+                PrintHelp();
+                return;
+            }
+
+            for (int i = 0; i < args.Length; ++i)
+            {
+                var arg = args[i];
+                if (arg is "-h" or "--help")
+                {
+                    PrintHelp();
+                    return;
+                }
+                else if (arg is "init")
+                {
+                    InitPackage();
+                    return;
+                }
+                else
+                {
+                    Console.WriteLine($"\nUnknown argument '{arg}'\n");
+                    PrintHelp();
+                    return;
+                }
+            }
+        }
+
+        private static void PrintHelp()
+        {
+            Console.WriteLine(
+                @"upak pack: Tools for automating unity package operations
 
 usage: upak pack [-h | --help] [command]
 
 Commands:
     init        Initialize new package in current unity project
 ");
-            }
-            if (strings.Length == 0)
-            {
-                Console.WriteLine("TODO: Print package info");
-                return;
-            }
-            else if (strings[0] is "-h" or "--help")
-            {
-                PrintHelp();
-                return;
-            }
-            else if (strings[0] == "init")
-            {
-                InitPackage();
-                return;
-            }
-            else
-            {
-                Console.WriteLine("Unknown command: " + strings[0]);
-                PrintHelp();
-                return;
-            }
         }
     }
 }

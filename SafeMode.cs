@@ -4,8 +4,11 @@ namespace Upak
 {
     internal static class SafeMode
     {
+        public static bool Enabled { get; internal set; }
+
         internal static void Prompt(string message)
         {
+            if (!Enabled) { return; }
             Console.WriteLine("*Safe Mode*");
             Console.WriteLine("CWD: " + Environment.CurrentDirectory);
             Console.WriteLine(message);

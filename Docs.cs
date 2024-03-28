@@ -1,7 +1,9 @@
 using System;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Net.Http;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace Upak
@@ -32,7 +34,9 @@ namespace Upak
                 UseShellExecute = false,
                 FileName = "doxygen",
                 Arguments = "-g",
-                WindowStyle = ProcessWindowStyle.Hidden
+                WindowStyle = ProcessWindowStyle.Hidden,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
             };
             try
             {
@@ -42,6 +46,20 @@ namespace Upak
                     throw new InvalidOperationException("Failed to start doxygen");
                 }
                 process.WaitForExit();
+                if (process.ExitCode != 0)
+                {
+                    var msg = new StringBuilder();
+                    var stdout = process.StandardOutput.ReadToEnd();
+                    var stderr = process.StandardError.ReadToEnd();
+                    msg.AppendLine("Doxygen failed to generate default configuration file");
+                    msg.AppendLine("Standard Output:");
+                    msg.AppendLine(stdout);
+                    msg.AppendLine("Standard Error:");
+                    msg.AppendLine(stderr);
+                    msg.AppendLine("Exit Code:");
+                    msg.AppendLine(process.ExitCode.ToString(CultureInfo.InvariantCulture));
+                    throw new InvalidOperationException(msg.ToString());
+                }
             }
             catch (Exception e)
             {

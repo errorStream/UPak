@@ -27,6 +27,9 @@ namespace Upak
         [GeneratedRegex("^[a-z_.-]+$", RegexOptions.None, "en-US")]
         internal static partial Regex PackageNamePartRegex();
 
+        [GeneratedRegex("^[a-z_.-]+$", RegexOptions.IgnoreCase, "en-US")]
+        internal static partial Regex PackageNamePartCIRegex();
+
         [GeneratedRegex("^[a-z_.-]{1,214}$", RegexOptions.None, "en-US")]
         internal static partial Regex PackageNameRegex();
 

@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Xml;
 using Newtonsoft.Json;
 
@@ -61,112 +63,110 @@ namespace Upak
                 Console.WriteLine("[ERROR] Failed to read project.assets.json");
                 return;
             }
+            static string? Validator(ProjectAssets projectAssets)
             {
-                static string? Validator(ProjectAssets projectAssets)
+                if (projectAssets.Libraries is null)
                 {
-                    if (projectAssets.Libraries is null)
-                    {
-                        return "libraries not found";
-                    }
-
-                    if (projectAssets.Project is null)
-                    {
-                        return "project not found";
-                    }
-
-                    if (projectAssets.Libraries.Keys.Any(x => x == null))
-                    {
-                        return "a library key is null";
-                    }
-
-
-
-                    if (projectAssets.Libraries.Values.Aggregate((string?)null,
-                                                                 (acc, v) =>
-                                                                 (acc is not null ? acc
-                                                                  : v is null ? "a library entry is null"
-                                                                  : v.Path is null ? "a library path is null"
-                                                                  : v.Files is null ? "a library files is null"
-                                                                  : v.Files.Any(x => x is null) ? "a library file is null"
-                                                                  : null))
-                        is string s)
-                    {
-                        return s;
-                    }
-
-                    if (projectAssets.Project.Restore == null)
-                    {
-                        return "restore not found";
-                    }
-
-                    if (projectAssets.Project.Restore.PackagesPath == null)
-                    {
-                        return "packages path not found in restore";
-                    }
-
-                    return null;
+                    return "libraries not found";
                 }
 
-                var issue = Validator(projectAssets);
-
-                if (issue is not null)
+                if (projectAssets.Project is null)
                 {
-                    Console.WriteLine($"[ERROR] Project assets file is invalid: {issue}");
-                    return;
+                    return "project not found";
                 }
 
-                if (!Directory.Exists(outputPath))
+                if (projectAssets.Libraries.Keys.Any(x => x == null))
                 {
-                    // Get all files in outputPath
-                    var items = Directory.GetFiles(outputPath);
-                    foreach (var item in items)
+                    return "a library key is null";
+                }
+
+
+
+                if (projectAssets.Libraries.Values.Aggregate((string?)null,
+                                                             (acc, v) =>
+                                                             (acc is not null ? acc
+                                                              : v is null ? "a library entry is null"
+                                                              : v.Path is null ? "a library path is null"
+                                                              : v.Files is null ? "a library files is null"
+                                                              : v.Files.Any(x => x is null) ? "a library file is null"
+                                                              : null))
+                    is string s)
+                {
+                    return s;
+                }
+
+                if (projectAssets.Project.Restore == null)
+                {
+                    return "restore not found";
+                }
+
+                if (projectAssets.Project.Restore.PackagesPath == null)
+                {
+                    return "packages path not found in restore";
+                }
+
+                return null;
+            }
+
+            var issue = Validator(projectAssets);
+
+            if (issue is not null)
+            {
+                Console.WriteLine($"[ERROR] Project assets file is invalid: {issue}");
+                return;
+            }
+
+            if (!Directory.Exists(outputPath))
+            {
+                // Get all files in outputPath
+                var items = Directory.GetFiles(outputPath);
+                foreach (var item in items)
+                {
+                    if (Path.GetExtension(item) is ".dll" or ".xml")
                     {
-                        if (Path.GetExtension(item) is ".dll" or ".xml")
+                        var path = Path.GetFullPath(item);
+                        SafeMode.Prompt($"Deleting {path}");
+                        File.Delete(path);
+                    }
+                }
+            }
+            else
+            {
+                SafeMode.Prompt($"Creating directory '{outputPath}'");
+                Directory.CreateDirectory(outputPath);
+            }
+
+            foreach (var (key, library) in projectAssets.Libraries)
+            {
+                if (!key.StartsWith("Newtonsoft.Json/", StringComparison.OrdinalIgnoreCase) &&
+                    !key.StartsWith("Microsoft.CSharp/", StringComparison.OrdinalIgnoreCase) &&
+                    !key.StartsWith("JetBrains.Annotations/", StringComparison.OrdinalIgnoreCase))
+                {
+                    foreach (var file in library.Files)
+                    {
+                        if ((file.StartsWith("lib/netstandard2.0/", StringComparison.OrdinalIgnoreCase)) &&
+                            (file.EndsWith(".xml", StringComparison.OrdinalIgnoreCase) ||
+                             file.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)))
                         {
-                            var path = Path.GetFullPath(item);
-                            SafeMode.Prompt($"Deleting {path}");
-                            File.Delete(path);
+                            var filePath = Path.Combine(projectAssets.Project.Restore.PackagesPath, library.Path, file);
+                            var destPath = Path.Combine(outputPath, Path.GetFileName(filePath));
+                            SafeMode.Prompt($"Copying '{filePath}' to '{destPath}'");
+                            File.Copy(filePath, destPath, true);
                         }
                     }
                 }
-                else
-                {
-                    SafeMode.Prompt($"Creating directory '{outputPath}'");
-                    Directory.CreateDirectory(outputPath);
-                }
+            }
 
-                foreach (var (key, library) in projectAssets.Libraries)
-                {
-                    if (!key.StartsWith("Newtonsoft.Json/", StringComparison.OrdinalIgnoreCase) &&
-                        !key.StartsWith("Microsoft.CSharp/", StringComparison.OrdinalIgnoreCase) &&
-                        !key.StartsWith("JetBrains.Annotations/", StringComparison.OrdinalIgnoreCase))
-                    {
-                        foreach (var file in library.Files)
-                        {
-                            if ((file.StartsWith("lib/netstandard2.0/", StringComparison.OrdinalIgnoreCase)) &&
-                                (file.EndsWith(".xml", StringComparison.OrdinalIgnoreCase) ||
-                                 file.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)))
-                            {
-                                var filePath = Path.Combine(projectAssets.Project.Restore.PackagesPath, library.Path, file);
-                                var destPath = Path.Combine(outputPath, Path.GetFileName(filePath));
-                                SafeMode.Prompt($"Copying '{filePath}' to '{destPath}'");
-                                File.Copy(filePath, destPath, true);
-                            }
-                        }
-                    }
-                }
+            Directory.SetCurrentDirectory(oldDir);
 
-                Directory.SetCurrentDirectory(oldDir);
-
-                try
-                {
-                    SafeMode.Prompt($"Deleting temporary directory '{tmpObj.FullName}'");
-                    tmpObj.Delete(true);
-                }
-                catch (Exception e)
-                {
-                    Console.WriteLine($"Failed to delete temporary directory: {e.Message}");
-                }
+            try
+            {
+                SafeMode.Prompt($"Deleting temporary directory '{tmpObj.FullName}'");
+                tmpObj.Delete(true);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"Failed to delete temporary directory: {e.Message}");
             }
             Console.WriteLine("NuGet package installation complete");
         }
@@ -180,7 +180,9 @@ namespace Upak
                 UseShellExecute = false,
                 FileName = "dotnet",
                 Arguments = "restore",
-                WindowStyle = ProcessWindowStyle.Hidden
+                WindowStyle = ProcessWindowStyle.Hidden,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
             };
             try
             {
@@ -190,6 +192,20 @@ namespace Upak
                     throw new InvalidOperationException("Failed to start dotnet restore");
                 }
                 process.WaitForExit();
+                if (process.ExitCode != 0)
+                {
+                    var msg = new StringBuilder();
+                    var stdout = process.StandardOutput.ReadToEnd();
+                    var stderr = process.StandardError.ReadToEnd();
+                    msg.AppendLine("Dotnet restore execution failed");
+                    msg.AppendLine("Standard Output:");
+                    msg.AppendLine(stdout);
+                    msg.AppendLine("Standard Error:");
+                    msg.AppendLine(stderr);
+                    msg.AppendLine("Exit Code:");
+                    msg.AppendLine(process.ExitCode.ToString(CultureInfo.InvariantCulture));
+                    throw new InvalidOperationException(msg.ToString());
+                }
             }
             catch (Exception e)
             {
@@ -229,46 +245,108 @@ namespace Upak
             InstallPackages(new ConfigPackage[] { new(Id: packageName, Version: version) }, installPath);
         }
 
-        internal static void Category(string[] strings)
+        internal static void Category(string[] args)
         {
-            static void PrintHelp()
+            if (args.Length == 0)
             {
-                Console.WriteLine(
-                    @"upak nuget: A collection of tools for using nuget packages in unity
+                PrintHelp();
+                return;
+            }
 
-usage: upak nuget [-h | --help] [command]
+            for (int i = 0; i < args.Length; ++i)
+            {
+                var arg = args[i];
+                if (arg is "-h" or "--help")
+                {
+                    PrintHelp();
+                    return;
+                }
+                else if (arg is "--safe")
+                {
+                    SafeMode.Enabled = true;
+                }
+                else if (arg is "install")
+                {
+                    InstallCommand(args[(i + 1)..]);
+                    return;
+                }
+                else
+                {
+                    Console.WriteLine($"\nUnknown argument '{arg}'\n");
+                    PrintHelp();
+                    return;
+                }
+            }
+        }
+
+        private static void InstallCommand(string[] args)
+        {
+            if (args.Length == 0)
+            {
+                PrintInstallHelp();
+                return;
+            }
+
+            string? packageName = null;
+            string? version = null;
+
+            for (int i = 0; i < args.Length; ++i)
+            {
+                var arg = args[i];
+                if (arg is "-h" or "--help")
+                {
+                    PrintInstallHelp();
+                    return;
+                }
+                else if (packageName is null && Data.PackageNamePartCIRegex().IsMatch(arg))
+                {
+                    packageName = arg;
+                }
+                else if (packageName is not null && version is null && Data.SemVarRegex().IsMatch(arg))
+                {
+                    version = arg;
+                }
+                else
+                {
+                    Console.WriteLine($"\nUnknown argument '{arg}'\n");
+                    PrintInstallHelp();
+                    return;
+                }
+            }
+
+            if (packageName is null || version is null)
+            {
+                Console.WriteLine($"\nNot enough arguments provided\n");
+                PrintInstallHelp();
+                return;
+            }
+
+            InstallInUnityProject(packageName, version);
+        }
+
+        private static void PrintHelp()
+        {
+            Console.WriteLine(
+                @"upak nuget: A collection of tools for using nuget packages in unity
+
+usage: upak nuget [-h | --help] [command] [<args>]
 
 Commands:
     install        Install a nuget package
 ");
-            }
-            if (strings.Length == 0)
-            {
-                PrintHelp();
-                return;
-            }
-            else if (strings[0] is "-h" or "--help")
-            {
-                PrintHelp();
-                return;
-            }
-            else if (strings[0] == "install")
-            {
-                if (strings.Length < 3)
-                {
-                    Console.WriteLine("Not enough arguments for install command");
-                    PrintHelp();
-                    return;
-                }
-                InstallInUnityProject(strings[1], strings[2]);
-                return;
-            }
-            else
-            {
-                Console.WriteLine("Unknown command: " + strings[0]);
-                PrintHelp();
-                return;
-            }
+        }
+
+        private static void PrintInstallHelp()
+        {
+            Console.WriteLine(
+                @"upak nuget install: Download and install a nuget package to the parent unity project
+
+usage: upak nuget install [-h | --help] <package_name> <version>
+
+Arguments:
+    package_name    The full name of the package, eg. 'Newtonsoft.Json'
+    version         The version of the package to install, eg. '13.0.3'
+");
         }
     }
 }

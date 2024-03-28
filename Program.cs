@@ -1,6 +1,4 @@
 ﻿using System;
-using System.Reflection;
-using System.Diagnostics;
 
 namespace Upak
 {
@@ -8,61 +6,65 @@ namespace Upak
     {
         static void Main(string[] args)
         {
-            // SafeMode.Prompt("Testing safe mode");
-
-            // Console.WriteLine("Prompt failed");
-            // Environment.Exit(1);
-
-            static void PrintHelp()
-            {
-                Console.WriteLine(
-                    @"upak: A CLI for automating unity package operations
-
-usage: upak [-v | --version] [-h | --help] <category> [<args>]
-
-Category:
-    pack        Tools for automating unity package operations
-    nuget       A collection of tools for using nuget packages in unity
-");
-            }
             if (args.Length == 0)
             {
                 PrintHelp();
                 return;
             }
-            else if (args[0] is "-v" or "--version")
-            {
-                Assembly assembly = Assembly.GetExecutingAssembly();
-                // FileVersionInfo fileVersionInfo = FileVersionInfo.GetVersionInfo(assembly.Location);
-                // string? version = fileVersionInfo.ProductVersion;
 
-                string? version = typeof(Program).Assembly.GetName().Version?.ToString();
+            for (int i = 0; i < args.Length; ++i)
+            {
+                var arg = args[i];
+                if (arg is "-v" or "--version")
+                {
+                    PrintVersion();
+                    return;
+                }
+                else if (arg is "-h" or "--help")
+                {
+                    PrintHelp();
+                    return;
+                }
+                else if (arg is "--safe")
+                {
+                    SafeMode.Enabled = true;
+                }
+                else if (arg is "pack")
+                {
+                    Pack.Category(args[(i + 1)..]);
+                    return;
+                }
+                else if (arg is "nuget")
+                {
+                    Nuget.Category(args[(i + 1)..]);
+                    return;
+                }
+                else
+                {
+                    Console.WriteLine($"\nUnknown argument '{arg}'\n");
+                    PrintHelp();
+                    return;
+                }
+            }
+        }
 
-                Console.Write("upak ");
-                Console.WriteLine(version);
-                return;
-            }
-            else if (args[0] is "-h" or "--help")
-            {
-                PrintHelp();
-                return;
-            }
-            else if (args[0] is "pack")
-            {
-                Pack.Category(args[1..]);
-                return;
-            }
-            else if (args[0] is "nuget")
-            {
-                Nuget.Category(args[1..]);
-                return;
-            }
-            else
-            {
-                Console.WriteLine("Failed to parse command line arguments.\n");
-                PrintHelp();
-                return;
-            }
+        private static void PrintHelp()
+        {
+            Console.WriteLine(
+                @"upak: A CLI for automating unity package operations
+
+usage: upak [-v | --version] [-h | --help] [--safe] <category> [<args>]
+
+Category:
+    pack        Tools for automating unity package operations
+    nuget       A collection of tools for using nuget packages in unity
+");
+        }
+
+        private static void PrintVersion()
+        {
+            Console.Write("upak ");
+            Console.WriteLine(typeof(Program).Assembly.GetName().Version?.ToString());
         }
     }
 }
