@@ -8,6 +8,11 @@ namespace Upak
     {
         static void Main(string[] args)
         {
+            // SafeMode.Prompt("Testing safe mode");
+
+            // Console.WriteLine("Prompt failed");
+            // Environment.Exit(1);
+
             static void PrintHelp()
             {
                 Console.WriteLine(
@@ -17,7 +22,7 @@ usage: upak [-v | --version] [-h | --help] <category> [<args>]
 
 Category:
     pack        Tools for automating unity package operations
-    nugit       A collection of tools for using nugit packages in unity
+    nuget       A collection of tools for using nuget packages in unity
 ");
             }
             if (args.Length == 0)
@@ -45,9 +50,9 @@ Category:
                 Pack.Category(args[1..]);
                 return;
             }
-            else if (args[0] is "nugit")
+            else if (args[0] is "nuget")
             {
-                Nugit.Category(args[1..]);
+                Nuget.Category(args[1..]);
                 return;
             }
             else

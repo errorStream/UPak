@@ -1,8 +1,6 @@
 using System;
 using System.IO;
 using System.Text;
-using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 using InquirerCS;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -220,6 +218,7 @@ namespace Upak
 
         private static async void MakePackageCommon(CommonPackageOptions options, string packageRoot)
         {
+            SafeMode.Prompt($"Creating directory at '{packageRoot}'");
             Directory.CreateDirectory(packageRoot);
             var packageJsonPath = Path.Combine(packageRoot, "package.json");
             var packageJson = new Data.PackageJson
@@ -230,6 +229,7 @@ namespace Upak
                 DisplayName = options.DisplayName,
             };
             var packageJsonString = JsonConvert.SerializeObject(packageJson, Formatting.Indented);
+            SafeMode.Prompt($"Writing generated json to to '{packageJsonPath}'");
             File.WriteAllText(packageJsonPath, packageJsonString);
             var initialReadme = new StringBuilder()
                 .Append("# ")
@@ -238,85 +238,113 @@ namespace Upak
                 .AppendLine(options.Description ?? "TODO")
                 .AppendLine()
                 .ToString();
-            File.WriteAllText(Path.Combine(packageRoot, "README.md"), initialReadme);
-            File.WriteAllText(Path.Combine(packageRoot, "CHANGELOG.md"), "");
-            File.WriteAllText(Path.Combine(packageRoot, "LICENSE.md"), "TODO");
+            var readmePath = Path.Combine(packageRoot, "README.md");
+            SafeMode.Prompt($"Writing initial README.md to '{readmePath}'");
+            File.WriteAllText(readmePath, initialReadme);
+            var changelogPath = Path.Combine(packageRoot, "CHANGELOG.md");
+            SafeMode.Prompt($"Creating empty CHANGELOG.md at '{changelogPath}'");
+            File.WriteAllText(changelogPath, "");
+            var licensePath = Path.Combine(packageRoot, "LICENSE.md");
+            SafeMode.Prompt($"Creating empty LICENSE.md at '{licensePath}'");
+            File.WriteAllText(licensePath, "TODO");
             var editorRoot = Path.Combine(packageRoot, "Editor");
+            SafeMode.Prompt($"Creating empty Editor folder at '{editorRoot}'");
             Directory.CreateDirectory(editorRoot);
             var runtimeRoot = Path.Combine(packageRoot, "Runtime");
+            SafeMode.Prompt($"Creating empty Runtime folder at '{runtimeRoot}'");
             Directory.CreateDirectory(runtimeRoot);
             var testsRoot = Path.Combine(packageRoot, "Tests");
+            SafeMode.Prompt($"Creating empty Tests folder at '{testsRoot}'");
             Directory.CreateDirectory(testsRoot);
             var editorTestsRoot = Path.Combine(testsRoot, "Editor");
+            SafeMode.Prompt($"Creating empty Editor folder at '{editorTestsRoot}'");
             Directory.CreateDirectory(editorTestsRoot);
             var runtimeTestsRoot = Path.Combine(testsRoot, "Runtime");
+            SafeMode.Prompt($"Creating empty Runtime folder at '{runtimeTestsRoot}'");
             Directory.CreateDirectory(runtimeTestsRoot);
-            Directory.CreateDirectory(Path.Combine(packageRoot, "Samples~"));
+            var samplesRoot = Path.Combine(packageRoot, "Samples~");
+            SafeMode.Prompt($"Creating empty Samples~ folder at '{samplesRoot}'");
+            Directory.CreateDirectory(samplesRoot);
             var documentationRoot = Path.Combine(packageRoot, "Documentation~");
+            SafeMode.Prompt($"Creating empty Documentation~ folder at '{documentationRoot}'");
             Directory.CreateDirectory(documentationRoot);
+            var editorAssemblyDefinitionPath = Path.Combine(editorRoot, options.FullName + ".Editor.asmdef");
+            var editorAssemblyDefinitionJson = new JObject
+            {
+                ["name"] = options.FullName + ".Editor",
+                ["rootNamespace"] = "",
+                ["references"] = new JArray { options.FullName },
+                ["includePlatforms"] = new JArray { "Editor" },
+                ["excludePlatforms"] = new JArray(),
+                ["allowUnsafeCode"] = false,
+                ["overrideReferences"] = false,
+                ["precompiledReferences"] = new JArray(),
+                ["autoReferenced"] = true,
+                ["defineConstraints"] = new JArray(),
+                ["versionDefines"] = new JArray(),
+                ["noEngineReferences"] = false
+            }.ToString(Formatting.Indented);
+            SafeMode.Prompt($"Writing generated asmdef to '{editorAssemblyDefinitionPath}'");
             File.WriteAllText(
-                Path.Combine(editorRoot, options.FullName + ".Editor.asmdef"),
-                new JObject
-                {
-                    ["name"] = options.FullName + ".Editor",
-                    ["rootNamespace"] = "",
-                    ["references"] = new JArray { options.FullName },
-                    ["includePlatforms"] = new JArray { "Editor" },
-                    ["excludePlatforms"] = new JArray(),
-                    ["allowUnsafeCode"] = false,
-                    ["overrideReferences"] = false,
-                    ["precompiledReferences"] = new JArray(),
-                    ["autoReferenced"] = true,
-                    ["defineConstraints"] = new JArray(),
-                    ["versionDefines"] = new JArray(),
-                    ["noEngineReferences"] = false
-                }.ToString(Formatting.Indented));
+                editorAssemblyDefinitionPath,
+                editorAssemblyDefinitionJson);
+            var runtimeAssemblyDefinitionPath = Path.Combine(runtimeRoot, options.FullName + ".asmdef");
+            var runtimeAssemblyDefinitionJson = new JObject
+            {
+                ["name"] = options.FullName,
+            }.ToString(Formatting.Indented);
+            SafeMode.Prompt($"Writing generated asmdef to '{runtimeAssemblyDefinitionPath}'");
             File.WriteAllText(
-                Path.Combine(runtimeRoot, options.FullName + ".asmdef"),
-                new JObject
-                {
-                    ["name"] = options.FullName,
-                }.ToString(Formatting.Indented));
+                runtimeAssemblyDefinitionPath,
+                runtimeAssemblyDefinitionJson);
+            var editorTestsAssemblyDefinitionPath = Path.Combine(editorTestsRoot, options.FullName + ".Editor.Tests.asmdef");
+            var editorTestsAssemblyDefinitionJson = new JObject
+            {
+                ["name"] = options.FullName + ".Editor.Tests",
+                ["rootNamespace"] = "",
+                ["references"] = new JArray {
+                "UnityEngine.TestRunner",
+                "UnityEditor.TestRunner",
+                options.FullName,
+                options.FullName + ".Editor"
+                },
+                ["includePlatforms"] = new JArray { "Editor" },
+                ["excludePlatforms"] = new JArray(),
+                ["allowUnsafeCode"] = false,
+                ["overrideReferences"] = true,
+                ["precompiledReferences"] = new JArray {
+                "nunit.framework.dll"
+                },
+                ["autoReferenced"] = false,
+                ["defineConstraints"] = new JArray {
+                "UNITY_INCLUDE_TESTS"
+                },
+                ["versionDefines"] = new JArray(),
+                ["noEngineReferences"] = false
+            }.ToString(Formatting.Indented);
+            SafeMode.Prompt($"Writing generated asmdef to '{editorTestsAssemblyDefinitionPath}'");
             File.WriteAllText(
-                Path.Combine(editorTestsRoot, options.FullName + ".Editor.Tests.asmdef"),
-                new JObject
-                {
-                    ["name"] = options.FullName + ".Editor.Tests",
-                    ["rootNamespace"] = "",
-                    ["references"] = new JArray {
-                    "UnityEngine.TestRunner",
-                    "UnityEditor.TestRunner",
-                    options.FullName,
-                    options.FullName + ".Editor"
-                    },
-                    ["includePlatforms"] = new JArray { "Editor" },
-                    ["excludePlatforms"] = new JArray(),
-                    ["allowUnsafeCode"] = false,
-                    ["overrideReferences"] = true,
-                    ["precompiledReferences"] = new JArray {
-                    "nunit.framework.dll"
-                    },
-                    ["autoReferenced"] = false,
-                    ["defineConstraints"] = new JArray {
-                    "UNITY_INCLUDE_TESTS"
-                    },
-                    ["versionDefines"] = new JArray(),
-                    ["noEngineReferences"] = false
-                }.ToString(Formatting.Indented));
-            File.WriteAllText(
-                Path.Combine(runtimeTestsRoot, options.FullName + ".Tests.asmdef"),
-                new JObject
-                {
-                    ["name"] = options.FullName + ".Tests",
-                    ["references"] = new JArray {
+                editorTestsAssemblyDefinitionPath,
+                editorTestsAssemblyDefinitionJson);
+            var runtimeTestsAssemblyDefinitionPath = Path.Combine(runtimeTestsRoot, options.FullName + ".Tests.asmdef");
+            var runtimeTestsAssemblyDefinitionJson = new JObject
+            {
+                ["name"] = options.FullName + ".Tests",
+                ["references"] = new JArray {
                     options.FullName
                     },
-                    ["optionalUnityReferences"] = new JArray {
+                ["optionalUnityReferences"] = new JArray {
                     "TestAssemblies"
                     }
-                }.ToString(Formatting.Indented));
-            File.WriteAllText(Path.Combine(documentationRoot, options.OfficialName + ".md"), "# TODO\n");
-            await Docs.SetupDoxygen(documentationRoot, options.DisplayName ?? options.OfficialName, options.Description);
+            }.ToString(Formatting.Indented);
+            SafeMode.Prompt($"Writing generated asmdef to '{runtimeTestsAssemblyDefinitionPath}'");
+            File.WriteAllText(
+                runtimeTestsAssemblyDefinitionPath,
+                runtimeTestsAssemblyDefinitionJson);
+            var indexDocPath = Path.Combine(documentationRoot, options.OfficialName + ".md");
+            SafeMode.Prompt($"Writing generated documentation to '{indexDocPath}'");
+            File.WriteAllText(indexDocPath, "# TODO\n");
+            Docs.SetupDoxygen(documentationRoot, options.DisplayName ?? options.OfficialName, options.Description);
             // TODO: add git repo and gitignore
             // TODO: add license functionality
             //   [[https://spdx.org/licenses/][SPDX License List | Software Package Data Exchange (SPDX)]]

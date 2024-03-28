@@ -3,13 +3,12 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Threading.Tasks;
 using System.Xml;
 using Newtonsoft.Json;
 
 namespace Upak
 {
-    internal class Nugit
+    internal class Nuget
     {
         private record Restore(string PackagesPath);
         private record Library(string Path, string[] Files);
@@ -25,6 +24,7 @@ namespace Upak
         /// <returns>Promise which resolves once operation is complete</returns>
         private static void InstallPackages(IReadOnlyCollection<ConfigPackage> packages, string outputPath)
         {
+            SafeMode.Prompt("Creating temporary directory");
             var tmpObj = Directory.CreateTempSubdirectory();
             Console.WriteLine("Installing to " + tmpObj.FullName);
             var oldDir = Directory.GetCurrentDirectory();
@@ -49,6 +49,7 @@ namespace Upak
             }
 
             var xml = doc.OuterXml;
+            SafeMode.Prompt($"Writing generated xml to project file '{confPth}'");
             File.WriteAllText(confPth, xml);
             DotnetRestore();
             var projectAssetsPath = Path.Combine(tmpObj.FullName, "obj", "project.assets.json");
@@ -120,12 +121,15 @@ namespace Upak
                     {
                         if (Path.GetExtension(item) is ".dll" or ".xml")
                         {
-                            File.Delete(Path.GetFullPath(item));
+                            var path = Path.GetFullPath(item);
+                            SafeMode.Prompt($"Deleting {path}");
+                            File.Delete(path);
                         }
                     }
                 }
                 else
                 {
+                    SafeMode.Prompt($"Creating directory '{outputPath}'");
                     Directory.CreateDirectory(outputPath);
                 }
 
@@ -143,6 +147,7 @@ namespace Upak
                             {
                                 var filePath = Path.Combine(projectAssets.Project.Restore.PackagesPath, library.Path, file);
                                 var destPath = Path.Combine(outputPath, Path.GetFileName(filePath));
+                                SafeMode.Prompt($"Copying '{filePath}' to '{destPath}'");
                                 File.Copy(filePath, destPath, true);
                             }
                         }
@@ -153,6 +158,7 @@ namespace Upak
 
                 try
                 {
+                    SafeMode.Prompt("Deleting temporary directory '{tmpObj.FullName}'");
                     tmpObj.Delete(true);
                 }
                 catch (Exception e)
@@ -164,6 +170,7 @@ namespace Upak
 
         private static void DotnetRestore()
         {
+            SafeMode.Prompt("Running dotnet restore");
             var startInfo = new ProcessStartInfo
             {
                 CreateNoWindow = true,
@@ -207,11 +214,12 @@ namespace Upak
             (string path, string result) = found.Value;
 
             var installPath = (result == "project")
-                ? Path.Combine(path, "Assets", "NugitPackages")
-                : Path.Combine(path, "NugitPackages");
+                ? Path.Combine(path, "Assets", "NugetPackages")
+                : Path.Combine(path, "NugetPackages");
 
             if (!Directory.Exists(installPath))
             {
+                SafeMode.Prompt($"Creating directory '{installPath}'");
                 Directory.CreateDirectory(installPath);
             }
 
@@ -223,12 +231,12 @@ namespace Upak
             static void PrintHelp()
             {
                 Console.WriteLine(
-                    @"upak nugit: A collection of tools for using nugit packages in unity
+                    @"upak nuget: A collection of tools for using nuget packages in unity
 
-usage: upak nugit [-h | --help] [command]
+usage: upak nuget [-h | --help] [command]
 
 Commands:
-    install        Install a nugit package
+    install        Install a nuget package
 ");
             }
             if (strings.Length == 0)

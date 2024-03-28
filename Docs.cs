@@ -3,7 +3,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 
 namespace Upak
 {
@@ -24,10 +23,9 @@ namespace Upak
         [GeneratedRegex(@"^\s*HTML_EXTRA_STYLESHEET\s*=\s*", RegexOptions.None, "en-US")]
         private static partial Regex HtmlExtraStylesheetPattern();
 
-        internal static async Task SetupDoxygen(string documentationRoot, string projectName, string? projectBrief)
+        private static void GenerateDefaultDoxyfile()
         {
-            var oldCwd = Environment.CurrentDirectory;
-            Environment.CurrentDirectory = documentationRoot;
+            SafeMode.Prompt("Generating Default Doxyfile");
             var startInfo = new ProcessStartInfo
             {
                 CreateNoWindow = true,
@@ -50,67 +48,89 @@ namespace Upak
                 Console.WriteLine($"Failed to run doxygen: {e.Message}");
                 return;
             }
-            // Generate temp file
-            var tmpObj = Path.GetTempFileName();
-            // Process doxyfile line by line
-            using var reader = new StreamReader("Doxyfile");
-            using var writer = new StreamWriter(tmpObj);
+        }
+
+        private static void CopyWithFilter(string sourcePath, string targetPath, Func<string, string> filter)
+        {
+            SafeMode.Prompt($"Copying '{sourcePath}' to '{targetPath}' with Filter");
+            using var reader = new StreamReader(sourcePath);
+            using var writer = new StreamWriter(targetPath);
+
             string? line;
             while ((line = reader.ReadLine()) != null)
             {
-                string MakePrefix(string match)
+                writer.WriteLine(filter(line));
+            }
+
+            writer.Flush();
+            writer.Close();
+            reader.Close();
+        }
+
+        internal static void SetupDoxygen(string documentationRoot, string projectName, string? projectBrief)
+        {
+            var oldCwd = Environment.CurrentDirectory;
+            Environment.CurrentDirectory = documentationRoot;
+            GenerateDefaultDoxyfile();
+            // Generate temp file
+            SafeMode.Prompt("Generating Temp File");
+            var tmpObj = Path.GetTempFileName();
+            // Process doxyfile line by line
+            string ProcessDoxyfileLine(string line)
+            {
+                static string MakePrefix(string match)
                 {
                     return match + (match[^1] == '=' ? " " : "");
                 }
                 Match? match = default;
-                var newContent = "";
                 if ((match = ProjectNamePattern().Match(line)).Success)
                 {
-                    newContent = MakePrefix(match.Value) + projectName;
+                    return MakePrefix(match.Value) + projectName;
                 }
                 else if ((match = ProjectBriefPattern().Match(line)).Success)
                 {
-                    newContent = MakePrefix(match.Value) + projectBrief;
+                    return MakePrefix(match.Value) + projectBrief;
                 }
                 else if ((match = InputPattern().Match(line)).Success)
                 {
                     var prefix = MakePrefix(match.Value);
-                    newContent = prefix + "../Editor \n" + (new String(' ', prefix.Length)) + "../Runtime ";
+                    return prefix + "../Editor \n" + (new String(' ', prefix.Length)) + "../Runtime ";
                 }
                 else if ((match = FilesPattern().Match(line)).Success)
                 {
                     var prefix = MakePrefix(match.Value);
-                    newContent = prefix + "*.cs \n" + (new String(' ', prefix.Length)) + "*.md ";
+                    return prefix + "*.cs \n" + (new String(' ', prefix.Length)) + "*.md ";
                 }
                 else if ((match = HtmlExtraStylesheetPattern().Match(line)).Success)
                 {
-                    newContent = MakePrefix(match.Value) + "./doxygen-awesome.css";
+                    return MakePrefix(match.Value) + "./doxygen-awesome.css";
                 }
-                else
-                {
-                    newContent = line;
-                }
-                writer.WriteLine(newContent);
+
+                return line;
             }
-            writer.Flush();
-            writer.Close();
-            reader.Close();
+            SafeMode.Prompt($"Copying Doxyfile to temp file '{tmpObj}' with Filter");
+            CopyWithFilter("Doxyfile", tmpObj, ProcessDoxyfileLine);
+            SafeMode.Prompt("Deleting Doxyfile");
             File.Delete("Doxyfile");
+            SafeMode.Prompt("Moving file at '{tmpObj}' to Doxyfile");
             File.Move(tmpObj, "Doxyfile");
-            await DownloadDoxygenAwesome(documentationRoot);
+            DownloadDoxygenAwesome(documentationRoot);
             Environment.CurrentDirectory = oldCwd;
         }
 
-        private static async Task DownloadDoxygenAwesome(string documentationRoot)
+        private static void DownloadDoxygenAwesome(string documentationRoot)
         {
             var url = "https://raw.githubusercontent.com/jothepro/doxygen-awesome-css/main/doxygen-awesome.css";
             var fileName = "doxygen-awesome.css";
+            SafeMode.Prompt($"Downloading doxygen-awesome.css from '{url}' to '{fileName}'");
             try
             {
                 using HttpClient client = new HttpClient();
-                using Stream fileStream = await client.GetStreamAsync(url);
+                var streamTask = client.GetStreamAsync(url);
+                streamTask.Wait();
+                using Stream fileStream = streamTask.Result;
                 using FileStream output = new FileStream(fileName, FileMode.Create);
-                await fileStream.CopyToAsync(output);
+                fileStream.CopyTo(output);
             }
             catch (Exception e)
             {
