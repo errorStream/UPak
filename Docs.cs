@@ -48,23 +48,20 @@ namespace Upak
                 process.WaitForExit();
                 if (process.ExitCode != 0)
                 {
-                    var msg = new StringBuilder();
-                    var stdout = process.StandardOutput.ReadToEnd();
-                    var stderr = process.StandardError.ReadToEnd();
-                    msg.AppendLine("Doxygen failed to generate default configuration file");
-                    msg.AppendLine("Standard Output:");
-                    msg.AppendLine(stdout);
-                    msg.AppendLine("Standard Error:");
-                    msg.AppendLine(stderr);
-                    msg.AppendLine("Exit Code:");
-                    msg.AppendLine(process.ExitCode.ToString(CultureInfo.InvariantCulture));
-                    throw new InvalidOperationException(msg.ToString());
+                    throw new InvalidOperationException(
+                        new StringBuilder()
+                        .AppendLine("Doxygen failed to generate default configuration file")
+                        .AppendLine("Standard Output:")
+                        .AppendLine(process.StandardOutput.ReadToEnd())
+                        .AppendLine("Standard Error:")
+                        .AppendLine(process.StandardError.ReadToEnd())
+                        .AppendLine("Exit Code:")
+                        .AppendLine(process.ExitCode.ToString(CultureInfo.InvariantCulture)).ToString());
                 }
             }
             catch (Exception e)
             {
-                Console.WriteLine($"Failed to run doxygen: {e.Message}");
-                return;
+                throw new IOException("Failed to run doxygen", e);
             }
         }
 

@@ -26,148 +26,140 @@ namespace Upak
         /// <returns>Promise which resolves once operation is complete</returns>
         private static void InstallPackages(IReadOnlyCollection<ConfigPackage> packages, string outputPath)
         {
-            SafeMode.Prompt("Creating temporary directory");
-            var tmpObj = Directory.CreateTempSubdirectory();
-            Console.WriteLine("Installing to " + tmpObj.FullName);
-            var oldDir = Directory.GetCurrentDirectory();
-            Directory.SetCurrentDirectory(tmpObj.FullName);
-            var confPth = Path.Combine(tmpObj.FullName, "proj.csproj");
-            var doc = new XmlDocument();
-            var root = doc.CreateElement("Project");
-            doc.AppendChild(root);
-            root.SetAttribute("Sdk", "Microsoft.NET.Sdk");
-            var propertyGroup = doc.CreateElement("PropertyGroup");
-            root.AppendChild(propertyGroup);
-            var targetFramework = doc.CreateElement("TargetFramework");
-            propertyGroup.AppendChild(targetFramework);
-            targetFramework.InnerText = "netstandard2.0";
-            var itemGroup = doc.CreateElement("ItemGroup");
-            root.AppendChild(itemGroup);
-
-            foreach (var x in packages)
+            using (TempDir tmpDir = new())
             {
-                var package = doc.CreateElement("PackageReference");
-                itemGroup.AppendChild(package);
-                package.SetAttribute("Include", x.Id);
-                package.SetAttribute("Version", x.Version);
-            }
+                Console.WriteLine("Installing to " + tmpDir.Path);
+                var oldDir = Directory.GetCurrentDirectory();
+                Directory.SetCurrentDirectory(tmpDir.Path);
+                var confPth = Path.Combine(tmpDir.Path, "proj.csproj");
+                var doc = new XmlDocument();
+                var root = doc.CreateElement("Project");
+                doc.AppendChild(root);
+                root.SetAttribute("Sdk", "Microsoft.NET.Sdk");
+                var propertyGroup = doc.CreateElement("PropertyGroup");
+                root.AppendChild(propertyGroup);
+                var targetFramework = doc.CreateElement("TargetFramework");
+                propertyGroup.AppendChild(targetFramework);
+                targetFramework.InnerText = "netstandard2.0";
+                var itemGroup = doc.CreateElement("ItemGroup");
+                root.AppendChild(itemGroup);
 
-            var xml = doc.OuterXml;
-            SafeMode.Prompt($"Writing generated xml to project file '{confPth}'");
-            File.WriteAllText(confPth, xml);
-            DotnetRestore();
-            var projectAssetsPath = Path.Combine(tmpObj.FullName, "obj", "project.assets.json");
-            ProjectAssets? projectAssets = JsonConvert.DeserializeObject<ProjectAssets>(File.ReadAllText(projectAssetsPath));
-            if (projectAssets is null)
-            {
-                Console.WriteLine("[ERROR] Failed to read project.assets.json");
-                return;
-            }
-            static string? Validator(ProjectAssets projectAssets)
-            {
-                if (projectAssets.Libraries is null)
+                foreach (var x in packages)
                 {
-                    return "libraries not found";
+                    var package = doc.CreateElement("PackageReference");
+                    itemGroup.AppendChild(package);
+                    package.SetAttribute("Include", x.Id);
+                    package.SetAttribute("Version", x.Version);
                 }
 
-                if (projectAssets.Project is null)
+                var xml = doc.OuterXml;
+                SafeMode.Prompt($"Writing generated xml to project file '{confPth}'");
+                File.WriteAllText(confPth, xml);
+                DotnetRestore();
+                var projectAssetsPath = Path.Combine(tmpDir.Path, "obj", "project.assets.json");
+                ProjectAssets? projectAssets = JsonConvert.DeserializeObject<ProjectAssets>(File.ReadAllText(projectAssetsPath));
+                if (projectAssets is null)
                 {
-                    return "project not found";
+                    Console.WriteLine("[ERROR] Failed to read project.assets.json");
+                    return;
                 }
-
-                if (projectAssets.Libraries.Keys.Any(x => x == null))
+                static string? Validator(ProjectAssets projectAssets)
                 {
-                    return "a library key is null";
-                }
-
-
-
-                if (projectAssets.Libraries.Values.Aggregate((string?)null,
-                                                             (acc, v) =>
-                                                             (acc is not null ? acc
-                                                              : v is null ? "a library entry is null"
-                                                              : v.Path is null ? "a library path is null"
-                                                              : v.Files is null ? "a library files is null"
-                                                              : v.Files.Any(x => x is null) ? "a library file is null"
-                                                              : null))
-                    is string s)
-                {
-                    return s;
-                }
-
-                if (projectAssets.Project.Restore == null)
-                {
-                    return "restore not found";
-                }
-
-                if (projectAssets.Project.Restore.PackagesPath == null)
-                {
-                    return "packages path not found in restore";
-                }
-
-                return null;
-            }
-
-            var issue = Validator(projectAssets);
-
-            if (issue is not null)
-            {
-                Console.WriteLine($"[ERROR] Project assets file is invalid: {issue}");
-                return;
-            }
-
-            if (!Directory.Exists(outputPath))
-            {
-                // Get all files in outputPath
-                var items = Directory.GetFiles(outputPath);
-                foreach (var item in items)
-                {
-                    if (Path.GetExtension(item) is ".dll" or ".xml")
+                    if (projectAssets.Libraries is null)
                     {
-                        var path = Path.GetFullPath(item);
-                        SafeMode.Prompt($"Deleting {path}");
-                        File.Delete(path);
+                        return "libraries not found";
                     }
-                }
-            }
-            else
-            {
-                SafeMode.Prompt($"Creating directory '{outputPath}'");
-                Directory.CreateDirectory(outputPath);
-            }
 
-            foreach (var (key, library) in projectAssets.Libraries)
-            {
-                if (!key.StartsWith("Newtonsoft.Json/", StringComparison.OrdinalIgnoreCase) &&
-                    !key.StartsWith("Microsoft.CSharp/", StringComparison.OrdinalIgnoreCase) &&
-                    !key.StartsWith("JetBrains.Annotations/", StringComparison.OrdinalIgnoreCase))
-                {
-                    foreach (var file in library.Files)
+                    if (projectAssets.Project is null)
                     {
-                        if ((file.StartsWith("lib/netstandard2.0/", StringComparison.OrdinalIgnoreCase)) &&
-                            (file.EndsWith(".xml", StringComparison.OrdinalIgnoreCase) ||
-                             file.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)))
+                        return "project not found";
+                    }
+
+                    if (projectAssets.Libraries.Keys.Any(x => x == null))
+                    {
+                        return "a library key is null";
+                    }
+
+
+
+                    if (projectAssets.Libraries.Values.Aggregate((string?)null,
+                                                                 (acc, v) =>
+                                                                 (acc is not null ? acc
+                                                                  : v is null ? "a library entry is null"
+                                                                  : v.Path is null ? "a library path is null"
+                                                                  : v.Files is null ? "a library files is null"
+                                                                  : v.Files.Any(x => x is null) ? "a library file is null"
+                                                                  : null))
+                        is string s)
+                    {
+                        return s;
+                    }
+
+                    if (projectAssets.Project.Restore == null)
+                    {
+                        return "restore not found";
+                    }
+
+                    if (projectAssets.Project.Restore.PackagesPath == null)
+                    {
+                        return "packages path not found in restore";
+                    }
+
+                    return null;
+                }
+
+                var issue = Validator(projectAssets);
+
+                if (issue is not null)
+                {
+                    Console.WriteLine($"[ERROR] Project assets file is invalid: {issue}");
+                    return;
+                }
+
+                if (!Directory.Exists(outputPath))
+                {
+                    // Get all files in outputPath
+                    var items = Directory.GetFiles(outputPath);
+                    foreach (var item in items)
+                    {
+                        if (Path.GetExtension(item) is ".dll" or ".xml")
                         {
-                            var filePath = Path.Combine(projectAssets.Project.Restore.PackagesPath, library.Path, file);
-                            var destPath = Path.Combine(outputPath, Path.GetFileName(filePath));
-                            SafeMode.Prompt($"Copying '{filePath}' to '{destPath}'");
-                            File.Copy(filePath, destPath, true);
+                            var path = Path.GetFullPath(item);
+                            SafeMode.Prompt($"Deleting {path}");
+                            File.Delete(path);
                         }
                     }
                 }
+                else
+                {
+                    SafeMode.Prompt($"Creating directory '{outputPath}'");
+                    Directory.CreateDirectory(outputPath);
+                }
+
+                foreach (var (key, library) in projectAssets.Libraries)
+                {
+                    if (!key.StartsWith("Newtonsoft.Json/", StringComparison.OrdinalIgnoreCase) &&
+                        !key.StartsWith("Microsoft.CSharp/", StringComparison.OrdinalIgnoreCase) &&
+                        !key.StartsWith("JetBrains.Annotations/", StringComparison.OrdinalIgnoreCase))
+                    {
+                        foreach (var file in library.Files)
+                        {
+                            if ((file.StartsWith("lib/netstandard2.0/", StringComparison.OrdinalIgnoreCase)) &&
+                                (file.EndsWith(".xml", StringComparison.OrdinalIgnoreCase) ||
+                                 file.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)))
+                            {
+                                var filePath = Path.Combine(projectAssets.Project.Restore.PackagesPath, library.Path, file);
+                                var destPath = Path.Combine(outputPath, Path.GetFileName(filePath));
+                                SafeMode.Prompt($"Copying '{filePath}' to '{destPath}'");
+                                File.Copy(filePath, destPath, true);
+                            }
+                        }
+                    }
+                }
+
+                Directory.SetCurrentDirectory(oldDir);
             }
 
-            Directory.SetCurrentDirectory(oldDir);
-
-            try
-            {
-                SafeMode.Prompt($"Deleting temporary directory '{tmpObj.FullName}'");
-                tmpObj.Delete(true);
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine($"Failed to delete temporary directory: {e.Message}");
-            }
             Console.WriteLine("NuGet package installation complete");
         }
 
@@ -194,17 +186,15 @@ namespace Upak
                 process.WaitForExit();
                 if (process.ExitCode != 0)
                 {
-                    var msg = new StringBuilder();
-                    var stdout = process.StandardOutput.ReadToEnd();
-                    var stderr = process.StandardError.ReadToEnd();
-                    msg.AppendLine("Dotnet restore execution failed");
-                    msg.AppendLine("Standard Output:");
-                    msg.AppendLine(stdout);
-                    msg.AppendLine("Standard Error:");
-                    msg.AppendLine(stderr);
-                    msg.AppendLine("Exit Code:");
-                    msg.AppendLine(process.ExitCode.ToString(CultureInfo.InvariantCulture));
-                    throw new InvalidOperationException(msg.ToString());
+                    throw new InvalidOperationException(
+                        new StringBuilder()
+                        .AppendLine("Dotnet restore execution failed")
+                        .AppendLine("Standard Output:")
+                        .AppendLine(process.StandardOutput.ReadToEnd())
+                        .AppendLine("Standard Error:")
+                        .AppendLine(process.StandardError.ReadToEnd())
+                        .AppendLine("Exit Code:")
+                        .AppendLine(process.ExitCode.ToString(CultureInfo.InvariantCulture)).ToString());
                 }
             }
             catch (Exception e)
