@@ -85,52 +85,72 @@ namespace Upak
         internal static void SetupDoxygen(string documentationRoot, string projectName, string? projectBrief)
         {
             var oldCwd = Environment.CurrentDirectory;
-            Environment.CurrentDirectory = documentationRoot;
-            GenerateDefaultDoxyfile();
-            // Generate temp file
-            SafeMode.Prompt("Generating Temp File");
-            var tmpObj = Path.GetTempFileName();
-            // Process doxyfile line by line
-            string ProcessDoxyfileLine(string line)
+            string? tempFilePath = null;
+            try
             {
-                static string MakePrefix(string match)
+                Environment.CurrentDirectory = documentationRoot;
+                GenerateDefaultDoxyfile();
+                // Generate temp file
+                SafeMode.Prompt("Generating Temp File");
+                var tmpObj = Path.GetTempFileName();
+                tempFilePath = tmpObj;
+                // Process doxyfile line by line
+                string ProcessDoxyfileLine(string line)
                 {
-                    return match + (match[^1] == '=' ? " " : "");
-                }
-                Match? match = default;
-                if ((match = ProjectNamePattern().Match(line)).Success)
-                {
-                    return MakePrefix(match.Value) + projectName;
-                }
-                else if ((match = ProjectBriefPattern().Match(line)).Success)
-                {
-                    return MakePrefix(match.Value) + projectBrief;
-                }
-                else if ((match = InputPattern().Match(line)).Success)
-                {
-                    var prefix = MakePrefix(match.Value);
-                    return prefix + "../Editor \n" + (new String(' ', prefix.Length)) + "../Runtime ";
-                }
-                else if ((match = FilesPattern().Match(line)).Success)
-                {
-                    var prefix = MakePrefix(match.Value);
-                    return prefix + "*.cs \n" + (new String(' ', prefix.Length)) + "*.md ";
-                }
-                else if ((match = HtmlExtraStylesheetPattern().Match(line)).Success)
-                {
-                    return MakePrefix(match.Value) + "./doxygen-awesome.css";
-                }
+                    static string MakePrefix(string match)
+                    {
+                        return match + (match[^1] == '=' ? " " : "");
+                    }
+                    Match? match = default;
+                    if ((match = ProjectNamePattern().Match(line)).Success)
+                    {
+                        return MakePrefix(match.Value) + projectName;
+                    }
+                    else if ((match = ProjectBriefPattern().Match(line)).Success)
+                    {
+                        return MakePrefix(match.Value) + projectBrief;
+                    }
+                    else if ((match = InputPattern().Match(line)).Success)
+                    {
+                        var prefix = MakePrefix(match.Value);
+                        return prefix + "../Editor \n" + (new String(' ', prefix.Length)) + "../Runtime ";
+                    }
+                    else if ((match = FilesPattern().Match(line)).Success)
+                    {
+                        var prefix = MakePrefix(match.Value);
+                        return prefix + "*.cs \n" + (new String(' ', prefix.Length)) + "*.md ";
+                    }
+                    else if ((match = HtmlExtraStylesheetPattern().Match(line)).Success)
+                    {
+                        return MakePrefix(match.Value) + "./doxygen-awesome.css";
+                    }
 
-                return line;
+                    return line;
+                }
+                SafeMode.Prompt($"Copying Doxyfile to temp file '{tmpObj}' with Filter");
+                CopyWithFilter("Doxyfile", tmpObj, ProcessDoxyfileLine);
+                SafeMode.Prompt($"Moving file at '{tmpObj}' to Doxyfile");
+                File.Move(tmpObj, "Doxyfile", true);
+                DownloadDoxygenAwesome(documentationRoot);
             }
-            SafeMode.Prompt($"Copying Doxyfile to temp file '{tmpObj}' with Filter");
-            CopyWithFilter("Doxyfile", tmpObj, ProcessDoxyfileLine);
-            SafeMode.Prompt("Deleting Doxyfile");
-            File.Delete("Doxyfile");
-            SafeMode.Prompt($"Moving file at '{tmpObj}' to Doxyfile");
-            File.Move(tmpObj, "Doxyfile");
-            DownloadDoxygenAwesome(documentationRoot);
-            Environment.CurrentDirectory = oldCwd;
+            catch (Exception e)
+            {
+                Console.WriteLine($"[WARN] Failed to setup Doxygen: {e.Message}");
+            }
+            finally
+            {
+                if (tempFilePath is not null && File.Exists(tempFilePath))
+                {
+                    SafeMode.Prompt($"Deleting '{tempFilePath}'");
+                    File.Delete(tempFilePath);
+                }
+                if (File.Exists("Doxyfile"))
+                {
+                    SafeMode.Prompt("Deleting Doxyfile");
+                    File.Delete("Doxyfile");
+                }
+                Environment.CurrentDirectory = oldCwd;
+            }
         }
 
         private static void DownloadDoxygenAwesome(string documentationRoot)

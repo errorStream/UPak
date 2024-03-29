@@ -132,8 +132,8 @@ namespace Upak
                                                                "Must be a valid SemVar or 'any'") },
                                                        defaultValue: "any");
             Console.WriteLine("Should doxygen document generation be setup?");
-            generateDocs = Prompt.Input<bool>("Generate Docs?",
-                                              defaultValue: true);
+            generateDocs = Prompt.Confirm("Generate Docs?",
+                                          defaultValue: true);
             Console.WriteLine("Embedded packages are installed to the packages folder of the nearest parent unity project.");
             embeddedOrLocal = Prompt.Select("Embedded Or Local",
                                             _packagePlacements,
@@ -381,9 +381,12 @@ namespace Upak
                 runtimeTestsAssemblyDefinitionPath,
                 runtimeTestsAssemblyDefinitionJson);
             var indexDocPath = Path.Combine(documentationRoot, options.OfficialName + ".md");
-            SafeMode.Prompt($"Writing generated documentation to '{indexDocPath}'");
-            File.WriteAllText(indexDocPath, "# TODO\n");
-            Docs.SetupDoxygen(documentationRoot, options.DisplayName ?? options.OfficialName, options.Description);
+            if (options.GenerateDocs)
+            {
+                SafeMode.Prompt($"Writing generated documentation to '{indexDocPath}'");
+                File.WriteAllText(indexDocPath, "# TODO\n");
+                Docs.SetupDoxygen(documentationRoot, options.DisplayName ?? options.OfficialName, options.Description);
+            }
             // TODO: add git repo and gitignore
             // TODO: add license functionality
             //   [[https://spdx.org/licenses/][SPDX License List | Software Package Data Exchange (SPDX)]]
