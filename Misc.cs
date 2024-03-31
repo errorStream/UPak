@@ -15,9 +15,17 @@ namespace Upak
         internal static bool IsUnityPackage(string rootPath)
         {
             var packagePath = Path.Combine(rootPath, "package.json");
-            var rootIsInPackages = Directory.GetParent(rootPath)?.Name == "Packages";
-            var packageJsonExists = File.Exists(packagePath);
-            return rootIsInPackages && packageJsonExists;
+            try
+            {
+                var rootIsInPackages = Directory.GetParent(rootPath)?.Name == "Packages";
+                var packageJsonExists = File.Exists(packagePath);
+                return rootIsInPackages && packageJsonExists;
+            }
+            catch (Exception e)
+            {
+                Logger.LogWarning("Unexpected error while checking if Unity package: " + e.Message);
+                return false;
+            }
         }
 
         /// <summary>
@@ -26,11 +34,24 @@ namespace Upak
         /// </summary>
         internal static (T result, string path)? FirstDir<T>(Func<string, T?> transform)
         {
-            string currPath = Directory.GetCurrentDirectory();
+            string? currPath;
+
+            try
+            {
+                currPath = Directory.GetCurrentDirectory();
+            }
+            catch (Exception e)
+            {
+                Logger.LogError("Failed to get current directory: " + e.Message);
+                return null;
+            }
+
             if (currPath == null)
             {
-                throw new IOException("Could not get current directory");
+                Logger.LogError("Could not get current directory");
+                return null;
             }
+
             for (int iterations = 0; iterations < 1000; ++iterations)
             {
                 T? transformRes = transform(currPath);
@@ -38,18 +59,28 @@ namespace Upak
                 {
                     return (result: transformRes, path: currPath);
                 }
-                if (currPath is "/" or "C:\\")
+                if (currPath == Path.GetPathRoot(currPath))
                 {
                     return null;
                 }
-                var newCurrPath = Path.GetDirectoryName(currPath);
+                string? newCurrPath = null;
+                try
+                {
+                    newCurrPath = Path.GetDirectoryName(currPath);
+                }
+                catch (Exception e)
+                {
+                    Logger.LogError("Failed to get parent directory: " + e.Message);
+                }
                 if (newCurrPath == null)
                 {
-                    throw new IOException("Could not get parent directory");
+                    Logger.LogError("Could not get parent directory");
+                    return null;
                 }
                 currPath = newCurrPath;
             }
-            throw new TimeoutException("Timeout while trying to find valid directory");
+            Logger.LogError("Timeout while trying to find valid directory");
+            return null;
         }
 
         internal static string? FindValidDir(Predicate<string> predicate)
@@ -75,7 +106,7 @@ namespace Upak
         /// <returns>
         /// The path to the package root
         /// </returns>
-        internal static string? FindUnityPackageRoot(string path)
+        internal static string? FindUnityPackageRoot()
         {
             return FindValidDir(IsUnityPackage);
         }

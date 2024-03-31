@@ -2,9 +2,12 @@
 
 namespace Upak
 {
-    static class Program
+    /// <summary>
+    /// The main entry point for the application.
+    /// </summary>
+    public static class Program
     {
-        static void Main(string[] args)
+        internal static void Main(string[] args)
         {
             if (args.Length == 0)
             {
@@ -41,7 +44,7 @@ namespace Upak
                 }
                 else
                 {
-                    Console.WriteLine($"\nUnknown argument '{arg}'\n");
+                    Logger.LogError($"Unknown argument '{arg}'");
                     PrintHelp();
                     return;
                 }
@@ -51,7 +54,7 @@ namespace Upak
         private static void PrintHelp()
         {
             Console.WriteLine(
-                @"upak: A CLI for automating unity package operations
+               @"upak: A CLI for automating unity package operations
 
 usage: upak [-v | --version] [-h | --help] [--safe] <category> [<args>]
 

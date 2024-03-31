@@ -10,13 +10,100 @@ using Newtonsoft.Json;
 
 namespace Upak
 {
-    internal class Nuget
+    internal static class Nuget
     {
-        private record Restore(string PackagesPath);
-        private record Library(string Path, string[] Files);
-        private record Project(Restore Restore);
-        private record ProjectAssets(Dictionary<string, Library> Libraries, Project Project);
-        private record ConfigPackage(string Id, string Version);
+        #region Serialization types
+#pragma warning disable CA1812
+        private sealed record Restore(string PackagesPath);
+        private sealed record Library(string Path, string[] Files);
+        private sealed record Project(Restore Restore);
+        private sealed record ProjectAssets(Dictionary<string, Library> Libraries, Project Project);
+        private sealed record ConfigPackage(string Id, string Version);
+#pragma warning restore CA1812
+        #endregion Serialization types
+
+        private static bool GenerateCSProj(string rootDir, IReadOnlyCollection<ConfigPackage> packages)
+        {
+            try
+            {
+                var confPth = Path.Combine(rootDir, "proj.csproj");
+                var doc = new XmlDocument();
+                var root = doc.CreateElement("Project");
+                _ = doc.AppendChild(root);
+                root.SetAttribute("Sdk", "Microsoft.NET.Sdk");
+                var propertyGroup = doc.CreateElement("PropertyGroup");
+                _ = root.AppendChild(propertyGroup);
+                var targetFramework = doc.CreateElement("TargetFramework");
+                _ = propertyGroup.AppendChild(targetFramework);
+                targetFramework.InnerText = "netstandard2.0";
+                var itemGroup = doc.CreateElement("ItemGroup");
+                _ = root.AppendChild(itemGroup);
+
+                foreach (var x in packages)
+                {
+                    var package = doc.CreateElement("PackageReference");
+                    _ = itemGroup.AppendChild(package);
+                    package.SetAttribute("Include", x.Id);
+                    package.SetAttribute("Version", x.Version);
+                }
+
+                var xml = doc.OuterXml;
+                SafeMode.Prompt($"Writing generated xml to project file '{confPth}'");
+                File.WriteAllText(confPth, xml);
+                return true;
+            }
+            catch (Exception e)
+            {
+                Logger.LogError("Failed to generate csproj file: " + e.Message);
+                return false;
+            }
+        }
+
+        private static ProjectAssets? LoadProjectAssets(string rootDir)
+        {
+            try
+            {
+                var projectAssetsPath = Path.Combine(rootDir, "obj", "project.assets.json");
+                ProjectAssets? projectAssets = JsonConvert.DeserializeObject<ProjectAssets>(File.ReadAllText(projectAssetsPath));
+                if (projectAssets is null)
+                {
+                    Logger.LogError("Failed to read project.assets.json");
+                    return null;
+                }
+                static string? Validator(ProjectAssets projectAssets)
+                {
+                    return projectAssets.Libraries is null ? "libraries not found"
+                        : projectAssets.Project is null ? "project not found"
+                        : projectAssets.Libraries.Keys.Any(x => x == null) ? "a library key is null"
+                        : projectAssets.Libraries.Values.Aggregate((string?)null,
+                                                                    (acc, v) =>
+                                                                    acc is not null ? acc
+                                                                    : v is null ? "a library entry is null"
+                                                                    : v.Path is null ? "a library path is null"
+                                                                    : v.Files is null ? "a library files is null"
+                                                                    : v.Files.Any(x => x is null) ? "a library file is null"
+                                                                    : null) is string s ? s
+                        : projectAssets.Project.Restore == null ? "restore not found"
+                        : projectAssets.Project.Restore.PackagesPath == null ? "packages path not found in restore"
+                        : null;
+                }
+
+                var issue = Validator(projectAssets);
+
+                if (issue is not null)
+                {
+                    Logger.LogError("Project assets file is invalid: " + issue);
+                    return null;
+                }
+
+                return projectAssets;
+            }
+            catch (Exception e)
+            {
+                Logger.LogError("Failed to load project assets: " + e.Message);
+                return null;
+            }
+        }
 
         /// <summary>
         /// Downloads and installs assemblies to a directory
@@ -26,158 +113,115 @@ namespace Upak
         /// <returns>Promise which resolves once operation is complete</returns>
         private static void InstallPackages(IReadOnlyCollection<ConfigPackage> packages, string outputPath)
         {
+            var success = false;
             using (TempDir tmpDir = new())
             {
-                Console.WriteLine("Installing to " + tmpDir.Path);
-                var oldDir = Directory.GetCurrentDirectory();
-                Directory.SetCurrentDirectory(tmpDir.Path);
-                var confPth = Path.Combine(tmpDir.Path, "proj.csproj");
-                var doc = new XmlDocument();
-                var root = doc.CreateElement("Project");
-                doc.AppendChild(root);
-                root.SetAttribute("Sdk", "Microsoft.NET.Sdk");
-                var propertyGroup = doc.CreateElement("PropertyGroup");
-                root.AppendChild(propertyGroup);
-                var targetFramework = doc.CreateElement("TargetFramework");
-                propertyGroup.AppendChild(targetFramework);
-                targetFramework.InnerText = "netstandard2.0";
-                var itemGroup = doc.CreateElement("ItemGroup");
-                root.AppendChild(itemGroup);
-
-                foreach (var x in packages)
+                Logger.LogInfo("Installing to " + tmpDir.Path);
+                string? oldDir = null;
+                try
                 {
-                    var package = doc.CreateElement("PackageReference");
-                    itemGroup.AppendChild(package);
-                    package.SetAttribute("Include", x.Id);
-                    package.SetAttribute("Version", x.Version);
+                    oldDir = Directory.GetCurrentDirectory();
                 }
-
-                var xml = doc.OuterXml;
-                SafeMode.Prompt($"Writing generated xml to project file '{confPth}'");
-                File.WriteAllText(confPth, xml);
-                DotnetRestore();
-                var projectAssetsPath = Path.Combine(tmpDir.Path, "obj", "project.assets.json");
-                ProjectAssets? projectAssets = JsonConvert.DeserializeObject<ProjectAssets>(File.ReadAllText(projectAssetsPath));
-                if (projectAssets is null)
+                catch (Exception e)
                 {
-                    Console.WriteLine("[ERROR] Failed to read project.assets.json");
+                    Logger.LogError("Failed to get current directory: " + e.Message);
                     return;
                 }
-                static string? Validator(ProjectAssets projectAssets)
+                try
                 {
-                    if (projectAssets.Libraries is null)
+                    Directory.SetCurrentDirectory(tmpDir.Path);
+                    var generatedCSProj = GenerateCSProj(tmpDir.Path, packages);
+                    if (!generatedCSProj)
                     {
-                        return "libraries not found";
+                        Logger.LogError("Failed to generate csproj file. Aborting.");
+                        return;
+                    }
+                    var dotnetRestored = DotnetRestore();
+                    if (!dotnetRestored)
+                    {
+                        Logger.LogError("Failed to restore packages. Aborting.");
+                        return;
+                    }
+                    ProjectAssets? projectAssets = LoadProjectAssets(tmpDir.Path);
+
+                    if (projectAssets is null)
+                    {
+                        Logger.LogError("Could not retrive project assets information. Aborting.");
+                        return;
                     }
 
-                    if (projectAssets.Project is null)
+                    if (!Directory.Exists(outputPath))
                     {
-                        return "project not found";
-                    }
-
-                    if (projectAssets.Libraries.Keys.Any(x => x == null))
-                    {
-                        return "a library key is null";
-                    }
-
-
-
-                    if (projectAssets.Libraries.Values.Aggregate((string?)null,
-                                                                 (acc, v) =>
-                                                                 (acc is not null ? acc
-                                                                  : v is null ? "a library entry is null"
-                                                                  : v.Path is null ? "a library path is null"
-                                                                  : v.Files is null ? "a library files is null"
-                                                                  : v.Files.Any(x => x is null) ? "a library file is null"
-                                                                  : null))
-                        is string s)
-                    {
-                        return s;
-                    }
-
-                    if (projectAssets.Project.Restore == null)
-                    {
-                        return "restore not found";
-                    }
-
-                    if (projectAssets.Project.Restore.PackagesPath == null)
-                    {
-                        return "packages path not found in restore";
-                    }
-
-                    return null;
-                }
-
-                var issue = Validator(projectAssets);
-
-                if (issue is not null)
-                {
-                    Console.WriteLine($"[ERROR] Project assets file is invalid: {issue}");
-                    return;
-                }
-
-                if (!Directory.Exists(outputPath))
-                {
-                    // Get all files in outputPath
-                    var items = Directory.GetFiles(outputPath);
-                    foreach (var item in items)
-                    {
-                        if (Path.GetExtension(item) is ".dll" or ".xml")
+                        // Get all files in outputPath
+                        var items = Directory.GetFiles(outputPath);
+                        foreach (var item in items)
                         {
-                            var path = Path.GetFullPath(item);
-                            SafeMode.Prompt($"Deleting {path}");
-                            File.Delete(path);
-                        }
-                    }
-                }
-                else
-                {
-                    SafeMode.Prompt($"Creating directory '{outputPath}'");
-                    Directory.CreateDirectory(outputPath);
-                }
-
-                foreach (var (key, library) in projectAssets.Libraries)
-                {
-                    if (!key.StartsWith("Newtonsoft.Json/", StringComparison.OrdinalIgnoreCase) &&
-                        !key.StartsWith("Microsoft.CSharp/", StringComparison.OrdinalIgnoreCase) &&
-                        !key.StartsWith("JetBrains.Annotations/", StringComparison.OrdinalIgnoreCase))
-                    {
-                        foreach (var file in library.Files)
-                        {
-                            if ((file.StartsWith("lib/netstandard2.0/", StringComparison.OrdinalIgnoreCase)) &&
-                                (file.EndsWith(".xml", StringComparison.OrdinalIgnoreCase) ||
-                                 file.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)))
+                            if (Path.GetExtension(item) is ".dll" or ".xml")
                             {
-                                var filePath = Path.Combine(projectAssets.Project.Restore.PackagesPath, library.Path, file);
-                                var destPath = Path.Combine(outputPath, Path.GetFileName(filePath));
-                                SafeMode.Prompt($"Copying '{filePath}' to '{destPath}'");
-                                File.Copy(filePath, destPath, true);
+                                var path = Path.GetFullPath(item);
+                                SafeMode.Prompt($"Deleting {path}");
+                                File.Delete(path);
                             }
                         }
                     }
+                    else
+                    {
+                        SafeMode.Prompt($"Creating directory '{outputPath}'");
+                        _ = Directory.CreateDirectory(outputPath);
+                    }
+
+                    foreach (var (key, library) in projectAssets.Libraries)
+                    {
+                        if (!key.StartsWith("Newtonsoft.Json/", StringComparison.OrdinalIgnoreCase) &&
+                            !key.StartsWith("Microsoft.CSharp/", StringComparison.OrdinalIgnoreCase) &&
+                            !key.StartsWith("JetBrains.Annotations/", StringComparison.OrdinalIgnoreCase))
+                        {
+                            foreach (var file in library.Files)
+                            {
+                                if (file.StartsWith("lib/netstandard2.0/", StringComparison.OrdinalIgnoreCase) &&
+                                    (file.EndsWith(".xml", StringComparison.OrdinalIgnoreCase) ||
+                                     file.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)))
+                                {
+                                    var filePath = Path.Combine(projectAssets.Project.Restore.PackagesPath, library.Path, file);
+                                    var destPath = Path.Combine(outputPath, Path.GetFileName(filePath));
+                                    SafeMode.Prompt($"Copying '{filePath}' to '{destPath}'");
+                                    File.Copy(filePath, destPath, true);
+                                }
+                            }
+                        }
+                    }
+
+                    success = true;
+                }
+                catch (Exception e)
+                {
+                    Logger.LogError("Failed to install NuGet package: " + e.Message);
                 }
 
                 Directory.SetCurrentDirectory(oldDir);
             }
 
-            Console.WriteLine("NuGet package installation complete");
+            if (success)
+            {
+                Logger.LogInfo("NuGet package installation complete");
+            }
         }
 
-        private static void DotnetRestore()
+        private static bool DotnetRestore()
         {
-            SafeMode.Prompt("Running dotnet restore");
-            var startInfo = new ProcessStartInfo
-            {
-                CreateNoWindow = true,
-                UseShellExecute = false,
-                FileName = "dotnet",
-                Arguments = "restore",
-                WindowStyle = ProcessWindowStyle.Hidden,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            };
             try
             {
+                SafeMode.Prompt("Running dotnet restore");
+                var startInfo = new ProcessStartInfo
+                {
+                    CreateNoWindow = true,
+                    UseShellExecute = false,
+                    FileName = "dotnet",
+                    Arguments = "restore",
+                    WindowStyle = ProcessWindowStyle.Hidden,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                };
                 using var process = Process.Start(startInfo);
                 if (process == null)
                 {
@@ -196,11 +240,12 @@ namespace Upak
                         .AppendLine("Exit Code:")
                         .AppendLine(process.ExitCode.ToString(CultureInfo.InvariantCulture)).ToString());
                 }
+                return true;
             }
             catch (Exception e)
             {
-                Console.WriteLine($"Failed to run dotnet restore: {e.Message}");
-                return;
+                Logger.LogError("Failed to run dotnet restore: " + e.Message);
+                return false;
             }
         }
 
@@ -216,8 +261,8 @@ namespace Upak
 
             if (found is null)
             {
-                Console.WriteLine("[ERROR] Could not find a unity project or package to install to");
-                Environment.Exit(1);
+                Logger.LogError("Could not find a unity project or package to install to");
+                return;
             }
 
             (string result, string path) = found.Value;
@@ -228,8 +273,16 @@ namespace Upak
 
             if (!Directory.Exists(installPath))
             {
-                SafeMode.Prompt($"Creating directory '{installPath}'");
-                Directory.CreateDirectory(installPath);
+                try
+                {
+                    SafeMode.Prompt($"Creating directory '{installPath}'");
+                    _ = Directory.CreateDirectory(installPath);
+                }
+                catch (Exception e)
+                {
+                    Logger.LogError("Failed to create directory: " + e.Message);
+                    return;
+                }
             }
 
             InstallPackages(new ConfigPackage[] { new(Id: packageName, Version: version) }, installPath);
@@ -262,7 +315,7 @@ namespace Upak
                 }
                 else
                 {
-                    Console.WriteLine($"\nUnknown argument '{arg}'\n");
+                    Logger.LogError($"Unknown argument '{arg}'");
                     PrintHelp();
                     return;
                 }
@@ -298,7 +351,7 @@ namespace Upak
                 }
                 else
                 {
-                    Console.WriteLine($"\nUnknown argument '{arg}'\n");
+                    Logger.LogError($"Unknown argument '{arg}'");
                     PrintInstallHelp();
                     return;
                 }
@@ -306,7 +359,7 @@ namespace Upak
 
             if (packageName is null || version is null)
             {
-                Console.WriteLine($"\nNot enough arguments provided\n");
+                Logger.LogError("Not enough arguments provided");
                 PrintInstallHelp();
                 return;
             }

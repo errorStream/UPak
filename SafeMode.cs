@@ -15,7 +15,7 @@ namespace Upak
             // Prompt for yes or no
             Console.WriteLine("Do you want to continue? (y/n)");
             string? response = Console.ReadLine();
-            if (response?.ToLower(System.Globalization.CultureInfo.InvariantCulture) != "y")
+            if (response?.ToUpperInvariant() != "Y")
             {
                 Console.WriteLine("Exiting...");
                 Environment.Exit(0);

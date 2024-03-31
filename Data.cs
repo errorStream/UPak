@@ -34,7 +34,9 @@ namespace Upak
         internal static partial Regex PackageNameRegex();
 
 
-        internal class Author
+        #region Serialization types
+#pragma warning disable CA1812
+        internal sealed class Author
         {
             [JsonProperty("name")]
             internal required string Name { get; init; }
@@ -46,7 +48,7 @@ namespace Upak
             internal Url? Url { get; init; }
         }
 
-        internal class Sample
+        internal sealed class Sample
         {
             [JsonProperty("displayName")]
             internal required string DisplayName { get; init; }
@@ -58,7 +60,7 @@ namespace Upak
             internal required Path Path { get; init; }
         }
 
-        internal class PackageJson
+        internal sealed class PackageJson
         {
             [JsonProperty("name")]
             internal required PackageName Name { get; init; }
@@ -105,5 +107,7 @@ namespace Upak
             [JsonProperty("unityRelease")]
             internal SemVar? UnityRelease { get; init; }
         }
+#pragma warning restore CA1812
+        #endregion Serialization types
     }
 }
